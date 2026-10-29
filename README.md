@@ -1,37 +1,242 @@
-# Instalación del Proyecto
+# API de Ventas – Laravel
 
-## Instalar las dependencias de Composer
+API REST en Laravel 11 para gestionar un flujo básico de ventas: listar productos, registrar ventas con control de
+stock y descuentos, consultarlas y eliminarlas.
+
+## Demo en línea
+
+| | URL |
+|---|---|
+| **Aplicación (front)** | https://demo.ackee-company.com |
+| **API (base)** | https://api-demo.ackee-company.com/api |
+| Ejemplo rápido | https://api-demo.ackee-company.com/api/products |
+
+El front que consume esta API está en [grupokimtek/app-sales](https://github.com/grupokimtek/app-sales).
 
 ```bash
+curl https://api-demo.ackee-company.com/api/products
+```
+
+## Contenido
+
+- [Requisitos](#requisitos)
+- [Instalación local](#instalación-local)
+- [Endpoints](#endpoints)
+- [Decisiones de diseño](#decisiones-de-diseño)
+- [Estructura relevante](#estructura-relevante)
+- [Limitaciones conocidas](#limitaciones-conocidas)
+- [Enunciado original de la prueba](#prueba-técnica--api-rest-de-ventas-en-laravel)
+
+## Requisitos
+
+- PHP **8.2** o superior (con las extensiones habituales de Laravel: `mbstring`, `pdo_mysql`, `openssl`, `tokenizer`,
+  `xml`, `ctype`, `fileinfo`)
+- Composer 2
+- MySQL / MariaDB
+
+## Instalación local
+
+```bash
+git clone https://github.com/grupokimtek/api-sales.git
+cd api-sales
+
 composer install
-```
-
-## Crear el archivo de configuración
-
-```bash
 cp .env.example .env
-```
-
-## Configurar el archivo `.env`
-
-Completa los datos necesarios, como:
-
-- Nombre de la aplicación
-- Conexión a la base de datos
-- Usuario y contraseña de la base de datos
-- Otras variables de entorno requeridas
-
-## Generar la clave de la aplicación
-
-```bash
 php artisan key:generate
 ```
 
-## Ejecutar las migraciones
+Crea una base de datos vacía y configura en el `.env` los datos de conexión (`DB_DATABASE`, `DB_USERNAME`,
+`DB_PASSWORD`). Luego ejecuta las migraciones y los seeders:
 
 ```bash
-php artisan migrate
+php artisan migrate --seed
+php artisan serve
 ```
+
+La API queda en `http://127.0.0.1:8000/api`.
+
+El seeder carga **10 productos** y **2 usuarios** de prueba. La venta usa el usuario estático `user_id = 1`, como pide
+el enunciado.
+
+> Para reiniciar la base con datos limpios: `php artisan migrate:fresh --seed` (borra todas las tablas).
+
+## Endpoints
+
+Todas las respuestas son JSON. Conviene enviar el encabezado `Accept: application/json`.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/products` | Lista los productos. |
+| `POST` | `/api/sales` | Registra una venta. |
+| `GET` | `/api/sales` | Lista las ventas con su detalle. |
+| `DELETE` | `/api/sales/{id}` | Elimina una venta. |
+
+### `GET /api/products`
+
+```json
+[
+  {
+    "id": 1,
+    "name": "Laptop Lenovo ThinkPad",
+    "price": 7500,
+    "stock": 10000,
+    "image": "https://images.unsplash.com/photo-1517336714731-489689fd1ca8"
+  }
+]
+```
+
+### `POST /api/sales`
+
+```json
+{
+  "user_id": 1,
+  "items": [
+    { "product_id": 1, "quantity": 2, "discount_percent": 10 },
+    { "product_id": 3, "quantity": 1 }
+  ]
+}
+```
+
+`discount_percent` es opcional (0 por defecto) y debe estar entre 0 y 10.
+
+Respuesta `201 Created`:
+
+```json
+{
+  "message": "Venta creada correctamente",
+  "sale_id": 1,
+  "total": 13950
+}
+```
+
+Ejemplo del cálculo con ese request (laptop 7 500 × 2 con 10 %, teclado 450 × 1 sin descuento):
+
+```text
+laptop:  subtotal = 15 000   descuento = 1 500   subtotal con descuento = 13 500
+teclado: subtotal =    450   descuento =     0   subtotal con descuento =    450
+total = 13 950   total_discount = 1 500
+```
+
+### `GET /api/sales`
+
+```json
+[
+  {
+    "id": 1,
+    "total": 13950,
+    "total_discount": 1500,
+    "created_at": "2026-10-29",
+    "created_at_datetime": "2026-10-29T14:41:40+00:00",
+    "user": { "id": 1, "name": "Test User", "email": "admin@test.com" },
+    "units": 3,
+    "details": [
+      {
+        "product": "Laptop Lenovo ThinkPad",
+        "image": "https://images.unsplash.com/photo-1517336714731-489689fd1ca8",
+        "quantity": 2,
+        "price": 7500,
+        "subtotal": 15000,
+        "discount_percent": 10,
+        "discount_amount": 1500,
+        "subtotal_with_discount": 13500
+      },
+      {
+        "product": "Teclado Mecánico RGB",
+        "image": "https://images.unsplash.com/photo-1517336714731-489689fd1ca8",
+        "quantity": 1,
+        "price": 450,
+        "subtotal": 450,
+        "discount_percent": 0,
+        "discount_amount": 0,
+        "subtotal_with_discount": 450
+      }
+    ]
+  }
+]
+```
+
+### `DELETE /api/sales/{id}`
+
+```json
+{ "message": "Venta eliminada correctamente" }
+```
+
+Si la venta no existe responde `404` con `{ "message": "Venta no encontrada" }`.
+
+### Errores
+
+| Caso | Código | Ejemplo de respuesta |
+|---|---|---|
+| Validación (sin productos, cantidad ≤ 0, producto inexistente, descuento fuera de 0–10…) | `422` | `{ "message": "...", "errors": { "items.0.quantity": ["..."] } }` |
+| Stock insuficiente | `422` | `{ "message": "Stock insuficiente.", "errors": { "stock.1": "Stock insuficiente para '...': disponible 10, solicitado 50." } }` |
+| Venta inexistente al eliminar | `404` | `{ "message": "Venta no encontrada" }` |
+
+### Probar con cURL
+
+```bash
+# Crear una venta con descuento
+curl -X POST https://api-demo.ackee-company.com/api/sales \
+  -H "Content-Type: application/json" -H "Accept: application/json" \
+  -d '{"user_id":1,"items":[{"product_id":1,"quantity":2,"discount_percent":10},{"product_id":3,"quantity":1}]}'
+
+# Listar ventas
+curl -H "Accept: application/json" https://api-demo.ackee-company.com/api/sales
+
+# Eliminar una venta
+curl -X DELETE -H "Accept: application/json" https://api-demo.ackee-company.com/api/sales/1
+```
+
+## Decisiones de diseño
+
+- **Transacción y bloqueo de stock.** La venta, sus detalles y el descuento de stock se ejecutan dentro de
+  `DB::transaction`. Las filas de los productos se leen con `lockForUpdate()` para que dos ventas simultáneas no
+  vendan el mismo stock. Si algo falla, no queda nada guardado.
+- **Precios desde la base de datos.** El request solo trae `product_id`, `quantity` y, opcionalmente,
+  `discount_percent`. El precio nunca se toma del cliente.
+- **Productos repetidos.** El stock se valida por el total pedido de cada producto. Si el mismo producto llega varias
+  veces con el mismo descuento, se suman las cantidades en una sola línea; con descuentos distintos se crean líneas
+  separadas.
+- **Descuento por producto (característica opcional, implementada).** Entre 0 y 10 % (admite decimales). Se calcula
+  dentro de la transacción: `discount_amount = subtotal × discount_percent / 100` y
+  `subtotal_with_discount = subtotal − discount_amount`. El `total` es la suma de los subtotales con descuento, y
+  `total_discount` la suma de los descuentos. Todo se redondea a 2 decimales. La migración
+  `2026_10_29_000001_add_discounts_to_sales_tables` agrega las columnas y rellena las ventas anteriores.
+- **Eliminar es un borrado lógico** (`SoftDeletes`, la tabla `sales` ya tenía `deleted_at`). La venta deja de
+  aparecer en el listado, pero **no se devuelve el stock**, porque el enunciado no lo pide.
+- **Campos adicionales en las respuestas.** Además de los campos pedidos, se agregan `image` (productos y detalles),
+  `user`, `units`, `created_at_datetime` y `price` por detalle. Los usa el front y no alteran los campos del
+  enunciado.
+- **Total del ejemplo con descuento.** El ejemplo del enunciado muestra `total: 15000` junto a un subtotal con
+  descuento de `13500`, lo que contradice la regla "el total incluye la suma de los subtotales con descuento". Se
+  implementó la regla.
+- **Decimales en JSON.** `AppServiceProvider` fija `serialize_precision = -1`, porque algunos hostings usan 17 y
+  devuelven números como `150.530000000000001136…`.
+
+## Estructura relevante
+
+```text
+app/
+├── Http/Controllers/Api/
+│   ├── ProductController.php   # GET /api/products
+│   └── SaleController.php      # store, index y destroy de ventas
+├── Models/                     # Product, Sale, SaleDetail (relaciones y casts)
+└── Providers/AppServiceProvider.php
+database/
+├── migrations/                 # incluye la migración de descuentos
+└── seeders/                    # ProductSeeder y usuarios de prueba
+routes/api.php
+```
+
+## Limitaciones conocidas
+
+- **Sin autenticación.** La prueba usa un `user_id` estático y no pide login. Cualquiera que conozca la URL puede
+  crear o eliminar ventas. Para un uso real habría que protegerla (por ejemplo con Sanctum).
+- **CORS abierto** (valor por defecto de Laravel para `api/*`).
+- **Eliminar una venta no repone el stock** (ver decisiones de diseño).
+
+---
+
+> A continuación se conserva, sin cambios, el enunciado original de la prueba.
 
 # Prueba Técnica – API REST de Ventas en Laravel
 
