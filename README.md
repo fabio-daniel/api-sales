@@ -11,7 +11,7 @@ stock y descuentos, consultarlas y eliminarlas.
 | **API (base)** | https://api-demo.ackee-company.com/api |
 | Ejemplo rápido | https://api-demo.ackee-company.com/api/products |
 
-El front que consume esta API está en [grupokimtek/app-sales](https://github.com/grupokimtek/app-sales).
+El front que consume esta API está en [fabio-daniel/app-sales](https://github.com/fabio-daniel/app-sales).
 
 ```bash
 curl https://api-demo.ackee-company.com/api/products
@@ -37,7 +37,7 @@ curl https://api-demo.ackee-company.com/api/products
 ## Instalación local
 
 ```bash
-git clone https://github.com/grupokimtek/api-sales.git
+git clone https://github.com/fabio-daniel/api-sales.git
 cd api-sales
 
 composer install
